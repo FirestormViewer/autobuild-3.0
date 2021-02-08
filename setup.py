@@ -40,7 +40,8 @@ import os.path
 # will wreak havoc upon new users of your package, as they will not be able to
 # install your package without manually installing the dependencies first."
 # Updated for python 3 compat: https://docs.python.org/3.3/whatsnew/3.0.html?highlight=execfile#builtins
-exec(open(os.path.join("autobuild", "version.py")).read())
+with open(os.path.join("autobuild", "version.py")) as versionf:
+    exec(versionf.read())
 # The previous open/read/exec better have defined AUTOBUILD_VERSION_STRING!
 AUTOBUILD_VERSION_STRING                # NameError here means it didn't
 

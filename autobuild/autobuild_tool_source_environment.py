@@ -95,7 +95,7 @@ def _available_vsvers():
              '-products', '*',
              '-requires', 'Microsoft.Component.MSBuild',
              '-property', 'installationVersion'],
-             encoding='utf-8')
+             universal_newlines=True)
     except OSError as err:
         if err.errno != errno.ENOENT:
             raise
@@ -155,7 +155,7 @@ def load_vsvars(vsver):
             where = subprocess.check_output(
                 [_VSWHERE_PATH, '-version', version, '-products', '*',
                  '-requires', 'Microsoft.Component.MSBuild',
-                 '-property', 'InstallationPath'], encoding='utf-8').rstrip()
+                 '-property', 'InstallationPath'], universal_newlines=True).rstrip()
         except OSError as err:
             if err.errno != errno.ENOENT:
                 raise

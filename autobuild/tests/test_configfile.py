@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 # $LicenseInfo:firstyear=2010&license=mit$
 # Copyright (c) 2010, Linden Research, Inc.
 # 
@@ -23,13 +24,14 @@
 # Integration test to exercise the config file reading/writing
 #
 
+from builtins import str
 import unittest
 import os
 import sys
-from baseline_compare import AutobuildBaselineCompare
+from .baseline_compare import AutobuildBaselineCompare
 from autobuild import configfile
 from autobuild.executable import Executable
-from basetest import BaseTest
+from .basetest import BaseTest
 
 
 class TestConfigFile(BaseTest, AutobuildBaselineCompare):

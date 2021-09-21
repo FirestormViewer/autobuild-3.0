@@ -28,7 +28,7 @@ import argparse
 
 
 # Main tool functionality
-class AutobuildBase:
+class AutobuildBase(object):
 
     def name_from_file(self, filename):
         """

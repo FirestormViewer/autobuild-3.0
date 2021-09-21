@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 # $LicenseInfo:firstyear=2010&license=mit$
 # Copyright (c) 2010, Linden Research, Inc.
 # 
@@ -28,14 +29,14 @@ import pprint
 import tempfile
 import unittest
 from nose.tools import *                # assert_equals
-from baseline_compare import AutobuildBaselineCompare
+from .baseline_compare import AutobuildBaselineCompare
 from autobuild import autobuild_tool_build as build
 import autobuild.configfile as configfile
 from autobuild.executable import Executable
 import autobuild.common as common
 from autobuild.configfile import PACKAGE_METADATA_FILE, MetadataDescription
 from autobuild.autobuild_tool_build import BuildError, AutobuildTool
-from basetest import BaseTest, clean_dir, exc
+from .basetest import BaseTest, clean_dir, exc
 
 # ****************************************************************************
 #   TODO
@@ -108,7 +109,7 @@ class LocalBase(BaseTest, AutobuildBaselineCompare):
         else:
             assert len(platforms) == 1, \
                    "read_metadata(no platform) ambiguous: " \
-                   "pass one of %s" % ', '.join(platforms.keys())
+                   "pass one of %s" % ', '.join(list(platforms.keys()))
             _, platdata = platforms.popitem()
         return MetadataDescription(os.path.join(platdata.build_directory,
                                                 PACKAGE_METADATA_FILE))

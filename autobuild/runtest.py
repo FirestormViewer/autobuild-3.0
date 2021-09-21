@@ -1,3 +1,4 @@
+from __future__ import print_function
 # $LicenseInfo:firstyear=2010&license=mit$
 # Copyright (c) 2010, Linden Research, Inc.
 # 
@@ -23,6 +24,7 @@
 # simple test runner, superseded by nose, but might be handy for something
 # built to try out argparse while working with the existing tests
 
+from builtins import object
 import sys
 import os
 import argparse
@@ -32,7 +34,7 @@ sys.path.append(os.getcwd() + '/../')       # for autobuild scripts
 sys.path.append(os.getcwd() + '/tests/')    # for test suites
 
 
-class text_colours:
+class text_colours(object):
     warning = '\033[91m'
     title = '\033[92m'
     end = '\033[0m'
@@ -54,18 +56,18 @@ def find_all_tests():
                 module_name = file_name[:-3]
                 main_test_list.append(module_name)
             else:
-                print (text_colours.warning + "warning: file %r does not appear to have test coverage" +
-                       text_colours.end) % file_name
+                print((text_colours.warning + "warning: file %r does not appear to have test coverage" +
+                       text_colours.end) % file_name)
 
 
 # run the tests which have been chosen by the user
 def run_list_of_tests(list, list_to_skip):
     for test_name in list:
         if test_name in list_to_skip:
-            print (text_colours.title + 'Skipping %r' + text_colours.end) % test_name
+            print((text_colours.title + 'Skipping %r' + text_colours.end) % test_name)
         else:
             test_file = 'test_' + test_name
-            print (text_colours.title + 'Running tests for %r in module %r...' + text_colours.end) % (test_name, test_file)
+            print((text_colours.title + 'Running tests for %r in module %r...' + text_colours.end) % (test_name, test_file))
             test_suite = __import__(test_file, globals(), locals(), [], -1)
             suite = unittest.TestLoader().loadTestsFromModule(test_suite)
             unittest.TextTestRunner(verbosity=2).run(suite)

@@ -32,7 +32,11 @@ to specify all the files that have been installed.
 Author : Martin Reddy
 Date   : 2010-04-19
 """
+from __future__ import division
+from __future__ import print_function
+from __future__ import absolute_import
 
+from past.utils import old_div
 import os
 import sys
 import errno
@@ -40,17 +44,17 @@ import pprint
 import logging
 import tarfile
 import zipfile
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 import subprocess
 import socket
 import itertools
 import codecs
 
-import common
-import configfile
-import autobuild_base
-import hash_algorithms
-from autobuild_tool_source_environment import get_enriched_environment
+from . import common
+from . import configfile
+from . import autobuild_base
+from . import hash_algorithms
+from .autobuild_tool_source_environment import get_enriched_environment
 
 logger = logging.getLogger('autobuild.install')
 
@@ -91,7 +95,7 @@ def print_list(label, array):
     if array:
         array.sort()
         list = ", ".join(array)
-    print "%s: %s" % (label, list)
+    print("%s: %s" % (label, list))
     return True
 
 
@@ -101,17 +105,17 @@ def handle_query_args(options, config_file, installed_file):
     Returns True if an argument was handled.
     """
     if options.list_installed:
-        return print_list("Installed", installed_file.dependencies.keys())
+        return print_list("Installed", list(installed_file.dependencies.keys()))
 
     if options.list_archives:
-        return print_list("Packages", config_file.installables.keys())
+        return print_list("Packages", list(config_file.installables.keys()))
 
     if options.list_licenses:
         if config_file.package_description.license is not None:
             licenses = [config_file.package_description.license]
         else:
             licenses = []
-        for installed in installed_file.dependencies.itervalues():
+        for installed in installed_file.dependencies.values():
             license = installed['package_description'].get('license')
             if license is not None and license not in licenses:
                 licenses.append(license)
@@ -121,7 +125,7 @@ def handle_query_args(options, config_file, installed_file):
         copyrights = dict()
         def recurse_dependencies(packages, copyrights):
             if 'dependencies' in packages:
-                for pkg in packages['dependencies'].iterkeys():
+                for pkg in packages['dependencies'].keys():
                     # since we prevent two versions of the same package from being installed, 
                     # we don't need to worry about two different copyrights here for the same package
                     if pkg not in copyrights:
@@ -138,14 +142,14 @@ def handle_query_args(options, config_file, installed_file):
             all_copyrights=""
         for pkg in sorted(copyrights):
             all_copyrights+="%s: %s" % (pkg,copyrights[pkg])
-        print all_copyrights.rstrip() # the rstrip prevents two newlines on the end
+        print(all_copyrights.rstrip()) # the rstrip prevents two newlines on the end
         return True
 
     if options.versions:
         versions = dict()
         def recurse_dependencies(packages, versions):
             if 'dependencies' in packages:
-                for pkg in packages['dependencies'].iterkeys():
+                for pkg in packages['dependencies'].keys():
                     # since we prevent two versions of the same package from being installed, 
                     # we don't need to worry about two different versions here for the same package
                     if pkg not in versions:
@@ -158,30 +162,30 @@ def handle_query_args(options, config_file, installed_file):
         all_versions=""
         for pkg in sorted(versions):
             all_versions+="%s: %s" % (pkg,versions[pkg])
-        print all_versions.rstrip() # the rstrip prevents two newlines on the end
+        print(all_versions.rstrip()) # the rstrip prevents two newlines on the end
         return True
 
     if options.export_manifest:
-        for package in installed_file.dependencies.itervalues():
+        for package in installed_file.dependencies.values():
             item = pprint.pformat(package).rstrip()  # trim final newline
             sys.stdout.writelines((item, ",\n"))  # permit parsing -- bad syntax otherwise
         return True
 
     if options.list_dirty:
         installed = installed_file.dependencies
-        dirty_pkgs = [installed[package]['package_description']['name'] for package in installed.keys()
+        dirty_pkgs = [installed[package]['package_description']['name'] for package in list(installed.keys())
                       if 'dirty' in  installed[package] and installed[package]['dirty']]
         return print_list("Dirty Packages", dirty_pkgs)
 
     if options.list_installed_urls:
         installed = installed_file.dependencies
         archives=[]
-        for name, package in installed.iteritems():
+        for name, package in installed.items():
             if 'url' in package['archive']:
                 archives.append('%s' % package['archive']['url'])
             else:
                 archives.append('%s - no url' % name)
-        print '\n'.join(archives)
+        print('\n'.join(archives))
         return True
 
     if options.query_installed_file:
@@ -192,16 +196,16 @@ def handle_query_args(options, config_file, installed_file):
 
 def print_package_for(target_file, installed_file):
     found_package=None
-    for package in installed_file.dependencies.itervalues():
+    for package in installed_file.dependencies.values():
         if 'manifest' in package and target_file in package['manifest']:
             found_package = package
             break
             
     if found_package:
-        print "file '%s' installed by package '%s'" \
-        % (target_file, package['package_description']['name'])
+        print("file '%s' installed by package '%s'" \
+        % (target_file, package['package_description']['name']))
     else:
-        print "file '%s' not found in installed files" % target_file
+        print("file '%s' not found in installed files" % target_file)
 
 def package_cache_path(package):
     """
@@ -240,8 +244,8 @@ def get_package_file(package_name, package_url, hash_algorithm='md5', expected_h
             # Attempt to download the remote file
             logger.info("downloading %s:\n  %s\n     to %s" % (package_name, package_url, cache_file))
             try:
-                package_response = urllib2.urlopen(package_url, None, download_timeout_seconds)
-            except urllib2.URLError as err:
+                package_response = urllib.request.urlopen(package_url, None, download_timeout_seconds)
+            except urllib.error.URLError as err:
                 logger.error("error: %s\n  downloading package %s" % (err, package_url))
                 package_response = None
                 cache_file = None
@@ -250,7 +254,7 @@ def get_package_file(package_name, package_url, hash_algorithm='md5', expected_h
                 with file(cache_file, 'wb') as cache:
                     max_block_size = 1024*1024 # if this is changed, also change 'MB' in progress message below
                     package_size = int(package_response.headers.get("content-length", 0))
-                    package_blocks = package_size / max_block_size if package_size else 0
+                    package_blocks = old_div(package_size, max_block_size) if package_size else 0
                     if package_blocks < (package_size * max_block_size):
                         package_blocks += 1 
                     logger.debug("response size %d blocks %d" % (package_size, package_blocks))
@@ -261,15 +265,15 @@ def get_package_file(package_name, package_url, hash_algorithm='md5', expected_h
                         if logger.getEffectiveLevel() <= logging.INFO:
                             # use CR and trailing comma to rewrite the same line each time for progress
                             if package_blocks:
-                                print "%d MB / %d MB (%d%%)\r" % (blocks_recvd, package_blocks, int(100*blocks_recvd/package_blocks)),
+                                print("%d MB / %d MB (%d%%)\r" % (blocks_recvd, package_blocks, int(old_div(100*blocks_recvd,package_blocks))), end=' ')
                                 sys.stdout.flush()
                             else:
-                                print "%d\r" % blocks_recvd,
+                                print("%d\r" % blocks_recvd, end=' ')
                                 sys.stdout.flush()
                         cache.write(block)
                         block = package_response.read(max_block_size)
                 if logger.getEffectiveLevel() <= logging.INFO:
-                    print "" # get a new line following progress message
+                    print("") # get a new line following progress message
                     sys.stdout.flush()
                 # some failures seem to leave empty cache files... delete and retry
                 if os.path.exists(cache_file) and os.path.getsize(cache_file) == 0:
@@ -624,7 +628,7 @@ def transitive_dependency_conflicts(new_package, installed):
     TransitiveSearched.add(new_package['package_description']['name'])
     if 'dependencies' in new_package:
         logger.debug("  checking conflicts for dependencies of %s in installed" % new_package['package_description']['name'])
-        for new_dependency in new_package['dependencies'].iterkeys():
+        for new_dependency in new_package['dependencies'].keys():
             depend_conflicts=""
             if new_dependency not in TransitiveSearched:
                 depend_conflicts = transitive_dependency_conflicts(new_package['dependencies'][new_dependency], installed)
@@ -642,7 +646,7 @@ def package_in_installed(new_package, installed):
     conflict = ""
     if 'dependencies' in installed:
         previous = installed['dependencies']
-        for used in previous.iterkeys():
+        for used in previous.keys():
             # logger.debug("=====\npackage\n%s\nvs\n%s" % (pprint.pformat(new_package), pprint.pformat(previous[used])))
             used_conflict=""
             if new_package['package_description']['name'] == used:
@@ -749,7 +753,7 @@ def clean_files(install_dir, files):
     # added to the list when deleting files above.
     while directories:
         parents=set()
-        for dirname in sorted(directories, cmp=lambda x,y: cmp(len(y),len(x))):
+        for dirname in sorted(directories, key=len, reverse=True):
             dir_path = os.path.join(install_dir, dirname)
             if os.path.exists(dir_path) and not os.listdir(dir_path):
                 os.rmdir(dir_path)
@@ -780,10 +784,10 @@ def install_packages(args, config_file, install_dir, platform, packages):
     if not packages: # no package names were specified on the command line
         if args.local_archives: # one or more --local packages were specified
             logger.warning("Using --local with no package names listed installs only those local packages")
-            local_packages = config_file.installables.keys()
+            local_packages = list(config_file.installables.keys())
         else:
             logger.debug("no package names specified; installing all packages")
-            packages = config_file.installables.keys()
+            packages = list(config_file.installables.keys())
         
     # examine any local archives to match then with package names.
     local_archives = {}

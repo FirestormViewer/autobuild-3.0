@@ -5,6 +5,7 @@
 @date   2012-08-24
 @brief  Define BaseTest, a base class for all individual test classes.
 """
+from __future__ import print_function
 # $LicenseInfo:firstyear=2012&license=mit$
 # Copyright (c) 2010, Linden Research, Inc.
 # 
@@ -27,6 +28,10 @@
 # THE SOFTWARE.
 # $/LicenseInfo$
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import object
 import os
 import sys
 import errno
@@ -36,7 +41,7 @@ import time
 import shutil
 import unittest
 from contextlib import contextmanager
-from cStringIO import StringIO
+from io import StringIO
 
 from autobuild import common
 
@@ -74,16 +79,16 @@ class BaseTest(unittest.TestCase):
                 tries += 1
                 try:
                     os.remove(path)
-                except OSError, err:
+                except OSError as err:
                     if err.errno == errno.ENOENT:
                         return
                     if err.errno != errno.EACCES:
-                        print "*** Unknown %s (errno %s): %s: %s" % \
-                              (err.__class__.__name__, err.errno, err, path)
+                        print("*** Unknown %s (errno %s): %s: %s" % \
+                              (err.__class__.__name__, err.errno, err, path))
                         sys.stdout.flush()
                         raise
                     if (time.time() - start) > 10:
-                        print "*** remove(%r) timed out after %s retries" % (path, tries)
+                        print("*** remove(%r) timed out after %s retries" % (path, tries))
                         sys.stdout.flush()
                         raise
                     time.sleep(1)
@@ -94,18 +99,18 @@ class BaseTest(unittest.TestCase):
 def clean_file(pathname):
     try:
         os.remove(pathname)
-    except OSError, err:
+    except OSError as err:
         if err.errno != errno.ENOENT:
-            print >>sys.stderr, "*** Can't remove %s: %s" % (pathname, err)
+            print("*** Can't remove %s: %s" % (pathname, err), file=sys.stderr)
             # But no exception, we're still trying to clean up.
 
 def clean_dir(pathname):
     try:
         shutil.rmtree(pathname)
-    except OSError, err:
+    except OSError as err:
         # Nonexistence is fine.
         if err.errno != errno.ENOENT:
-            print >>sys.stderr, "*** Can't remove %s: %s" % (pathname, err)
+            print("*** Can't remove %s: %s" % (pathname, err), file=sys.stderr)
 
 def assert_in(item, container):
     assert item in container, "%r not in %r" % (item, container)

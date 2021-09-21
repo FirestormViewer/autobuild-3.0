@@ -27,7 +27,10 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 $/LicenseInfo$
 """
+from __future__ import absolute_import
 
+from builtins import str
+from builtins import object
 import os
 import logging
 import tempfile
@@ -46,7 +49,7 @@ from nose.plugins.skip import SkipTest
 #from autobuild.autobuild_main import Autobuild
 import autobuild.common as common
 import autobuild.autobuild_tool_graph as graph
-from basetest import *
+from .basetest import *
 
 logger = logging.getLogger("test_graph")
 

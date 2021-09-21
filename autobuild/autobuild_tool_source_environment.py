@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 # $LicenseInfo:firstyear=2010&license=mit$
 # Copyright (c) 2010, Linden Research, Inc.
 # 
@@ -20,6 +21,7 @@
 # THE SOFTWARE.
 # $/LicenseInfo$
 
+from builtins import str
 import os
 import sys
 from ast import literal_eval
@@ -34,8 +36,8 @@ import string
 import subprocess
 import tempfile
 
-import common
-import autobuild_base
+from . import common
+from . import autobuild_base
 
 logger = logging.getLogger('autobuild.source_environment')
 
@@ -475,7 +477,7 @@ similar.""")
         # A pathname ending with a backslash (as many do on Windows), when
         # embedded in quotes in a bash script, might inadvertently escape the
         # close quote. Remove all trailing backslashes.
-        vsvarslist = [(k, v.rstrip('\\')) for (k, v) in vsvars.iteritems()]
+        vsvarslist = [(k, v.rstrip('\\')) for (k, v) in vsvars.items()]
 
         # may as well sort by keys
         vsvarslist.sort()
@@ -491,8 +493,8 @@ similar.""")
     # Before expanding template with var_mapping, finalize the 'exports' and
     # 'vars' dicts into var_mapping["vars"] as promised above.
     var_mapping["vars"] = '\n'.join(itertools.chain(
-        (("    export %s='%s'" % (k, v)) for k, v in exports.iteritems()),
-        (("    %s='%s'" % (k, v)) for k, v in vars.iteritems()),
+        (("    export %s='%s'" % (k, v)) for k, v in exports.items()),
+        (("    %s='%s'" % (k, v)) for k, v in vars.items()),
         ))
 
     sys.stdout.write(template % var_mapping)
@@ -639,7 +641,7 @@ def internal_source_environment(configurations, varsfile):
         else:
             platform_re = re.compile(r'(.*_BUILD)_%s(.*)$' % platform)
             # use items() rather than iteritems(): we're modifying as we iterate
-            for var, value in vfvars.items():
+            for var, value in list(vfvars.items()):
                 match = platform_re.match(var)
                 if match:
                     # add a shorthand variable that excludes _PLATFORM
@@ -655,7 +657,7 @@ def internal_source_environment(configurations, varsfile):
                                ", ".join(configurations[1:]))
             configuration_re = re.compile(r'(.*_BUILD)_%s(.*)$' % configuration)
             # use items() because we're modifying as we iterate
-            for var, value in vfvars.items():
+            for var, value in list(vfvars.items()):
                 match = configuration_re.match(var)
                 if match:
                     # add a shorthand variable that excludes _CONFIGURATION

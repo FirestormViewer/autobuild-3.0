@@ -39,9 +39,7 @@ except ImportError:
     # in case pydot not installed!
     InvocationException = None
 
-from unittest import TestCase
-from nose.tools import *                # assert_equals() et al.
-from nose.plugins.skip import SkipTest
+from unittest import SkipTest, TestCase
 
 #from autobuild.autobuild_main import Autobuild
 import autobuild.common as common

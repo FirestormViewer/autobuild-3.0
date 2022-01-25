@@ -22,7 +22,7 @@
 
 import sys
 import unittest
-from nose.plugins.skip import SkipTest
+from unittest import SkipTest
 from autobuild.executable import Executable
 from .basetest import BaseTest
 

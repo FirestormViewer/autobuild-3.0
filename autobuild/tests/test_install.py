@@ -39,7 +39,6 @@ import urllib.parse
 import posixpath
 import subprocess
 from .basetest import *
-from nose.tools import *                # assert_equals etc.
 from string import Template
 from threading import Thread
 from http.server import HTTPServer
@@ -114,7 +113,7 @@ def query_manifest(options=None):
 # ****************************************************************************
 #   module setup() and teardown()
 # ****************************************************************************
-def setup():
+def setUpModule():
     """
     Module-level setup
     """
@@ -204,7 +203,7 @@ def setup():
 
     # -----------------------------------  -----------------------------------
 
-def teardown():
+def tearDownModule():
     """
     Module-level teardown
     """
@@ -261,14 +260,15 @@ class DownloadServer(SimpleHTTPRequestHandler):
 # ****************************************************************************
 #   tests
 # ****************************************************************************
-class BaseTest(object):
+class BaseTest(unittest.TestCase):
     default_config="packages-install.xml"
 
-    def __init__(self):
+    def __init__(self, *args):
+        super(BaseTest, self).__init__(*args)
         self.tempfiles = []
         self.tempdirs = []
 
-    def setup(self):
+    def setUp(self):
         # construct default options
         self.options = FakeOptions(install_filename=self.localizedConfig(self.default_config))
         # do not use the normal system cache so that unit tests can't leave anything
@@ -321,7 +321,7 @@ class BaseTest(object):
         # modifications to that PackageDescription metadata don't affect,
         self.config.installables[package.name] = package.copy()
 
-    def teardown(self):
+    def tearDown(self):
         # Actually, for the same reason, undo any successful install. To test
         # reinstalling, or installing several packages, explicitly perform the
         # desired sequence within a single test method.
@@ -336,8 +336,8 @@ class BaseTest(object):
 
 # -------------------------------------  -------------------------------------
 class TestInstallArchive(BaseTest):
-    def setup(self):
-        BaseTest.setup(self)
+    def setUp(self):
+        BaseTest.setUp(self)
         self.pkg = "bogus"
         self.options.package = [self.pkg]
 
@@ -350,7 +350,7 @@ class TestInstallArchive(BaseTest):
         with CaptureStdout() as stream:
             self.options.list_dirty=True
             autobuild_tool_install.AutobuildTool().run(self.options)
-        assert_equals(stream.getvalue(), 'Dirty Packages: \n')
+        self.assertEqual(stream.getvalue(), 'Dirty Packages: \n')
 
     def test_dry_run(self):
         dry_opts = self.options.copy()
@@ -452,7 +452,7 @@ class TestInstallArchive(BaseTest):
         with CaptureStdout() as stream:
             self.options.list_dirty=True
             autobuild_tool_install.AutobuildTool().run(self.options)
-        assert_equals(stream.getvalue(), 'Dirty Packages: nometa\n')
+        self.assertEqual(stream.getvalue(), 'Dirty Packages: nometa\n')
 
     def test_conflicting_file(self):
         # fail because the package contains a file installed by another package
@@ -513,7 +513,7 @@ class TestInstallArchive(BaseTest):
         self.options.list_archives = True
         with CaptureStdout() as stream:
             autobuild_tool_install.AutobuildTool().run(self.options)
-        assert_equals(set_from_stream(stream), set(('argparse', 'bogus')))
+        self.assertEqual(set_from_stream(stream), set(('argparse', 'bogus')))
 
     def test_list_licenses(self):
         self.options.package = None # install all
@@ -522,7 +522,7 @@ class TestInstallArchive(BaseTest):
         self.options.list_licenses = True
         with CaptureStdout() as stream:
             autobuild_tool_install.AutobuildTool().run(self.options)
-        assert_equals(set_from_stream(stream), set(("GPL", "Apache 2.0", "tut")))
+        self.assertEqual(set_from_stream(stream), set(("GPL", "Apache 2.0", "tut")))
 
     def test_copyrights(self):
         self.options.package = None # install all
@@ -531,7 +531,7 @@ class TestInstallArchive(BaseTest):
         self.options.copyrights = True
         with CaptureStdout() as stream:
             autobuild_tool_install.AutobuildTool().run(self.options)
-        assert_equals(stream.getvalue(), "Copyright 2014 Linden Research, Inc.\nbogus: The Owner\n")
+        self.assertEqual(stream.getvalue(), "Copyright 2014 Linden Research, Inc.\nbogus: The Owner\n")
 
     def test_versions(self):
         self.options.platform=None
@@ -541,12 +541,12 @@ class TestInstallArchive(BaseTest):
         self.options.versions = True
         with CaptureStdout() as stream:
             autobuild_tool_install.AutobuildTool().run(self.options)
-        assert_equals(stream.getvalue(), "bogus: 1\n")
+        self.assertEqual(stream.getvalue(), "bogus: 1\n")
 
 # -------------------------------------  -------------------------------------
 class TestInstallCachedArchive(BaseTest):
-    def setup(self):
-        BaseTest.setup(self)
+    def setUp(self):
+        BaseTest.setUp(self)
         self.pkg = "bogus"
         # make sure that the archive is not in the server
         clean_file(os.path.join(SERVER_DIR, "bogus-0.1-common-111.tar.bz2"))
@@ -564,12 +564,12 @@ class TestInstallCachedArchive(BaseTest):
         with CaptureStdout() as stream:
             self.options.list_dirty=True
             autobuild_tool_install.AutobuildTool().run(self.options)
-        assert_equals(stream.getvalue(), 'Dirty Packages: \n')
+        self.assertEqual(stream.getvalue(), 'Dirty Packages: \n')
 
 # -------------------------------------  -------------------------------------
 class TestInstallLocalArchive(BaseTest):
-    def setup(self):
-        BaseTest.setup(self)
+    def setUp(self):
+        BaseTest.setUp(self)
         self.pkg = "bogus"
         target_archive="bogus-0.1-common-111.tar.bz2"
         # Make sure the archive isn't in either the server directory or cache:
@@ -589,7 +589,7 @@ class TestInstallLocalArchive(BaseTest):
         with CaptureStdout() as stream:
             self.options.list_dirty=True
             autobuild_tool_install.AutobuildTool().run(self.options)
-        assert_equals(stream.getvalue(), 'Dirty Packages: bogus\n')
+        self.assertEqual(stream.getvalue(), 'Dirty Packages: bogus\n')
             
     def test_only_local(self):
         self.options.local_archives=[os.path.join(mydir, "data", "bogus-0.1-common-111.tar.bz2")]
@@ -607,8 +607,8 @@ class TestInstallLocalArchive(BaseTest):
 
 # -------------------------------------  -------------------------------------
 class TestDownloadFail(BaseTest):
-    def setup(self):
-        BaseTest.setup(self)
+    def setUp(self):
+        BaseTest.setUp(self)
         self.pkg = "notthere"
         clean_file(os.path.join(SERVER_DIR, "bogus-0.1-common-111.tar.bz2"))
         self.cache_name = in_dir(common.get_install_cache_dir(), "bogus-0.1-common-111.tar.bz2")
@@ -621,8 +621,8 @@ class TestDownloadFail(BaseTest):
 
 # -------------------------------------  -------------------------------------
 class TestGarbledDownload(BaseTest):
-    def setup(self):
-        BaseTest.setup(self)
+    def setUp(self):
+        BaseTest.setUp(self)
         self.cache_name = in_dir(common.get_install_cache_dir(), "bogus-0.1-common-111.tar.bz2")
         assert not os.path.exists(self.cache_name)
 
@@ -634,8 +634,8 @@ class TestGarbledDownload(BaseTest):
 
 # -------------------------------------  -------------------------------------
 class TestUninstallArchive(BaseTest):
-    def setup(self):
-        BaseTest.setup(self)
+    def setUp(self):
+        BaseTest.setUp(self)
         # Preliminary setup just like TestInstallArchive
         self.pkg = "bogus"
         self.options.package=[self.pkg]
@@ -680,7 +680,7 @@ class TestInstall(BaseTest):
         with CaptureStdout() as stream:
             self.options.list_archives=True
             autobuild_tool_install.AutobuildTool().run(self.options)
-        assert_equals(set_from_stream(stream), set(("argparse", "bogus")))
+        self.assertEqual(set_from_stream(stream), set(("argparse", "bogus")))
 
 if __name__ == '__main__':
     unittest.main()

@@ -6,3 +6,4 @@ dist/
 *.swp
 *.egg-info
 virtualenv/
+autobuild/tests/data

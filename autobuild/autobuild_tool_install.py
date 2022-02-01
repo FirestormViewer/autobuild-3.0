@@ -138,7 +138,11 @@ def handle_query_args(options, config_file, installed_file):
             all_copyrights=""
         for pkg in sorted(copyrights):
             all_copyrights+="%s: %s" % (pkg,copyrights[pkg])
-        print(all_copyrights.rstrip()) # the rstrip prevents two newlines on the end
+        try:
+            print(all_copyrights.rstrip()) # the rstrip prevents two newlines on the end
+        except UnicodeEncodeError as err:
+            print("Failure writing copyrights to output.  please ensure that PYTHONIOENCODING is properly set to utf-8", file=sys.stderr)
+            sys.exit("UnicodeEncodeError: {}".format(err))
         return True
 
     if options.versions:

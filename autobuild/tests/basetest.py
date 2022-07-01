@@ -35,23 +35,60 @@ import subprocess
 import time
 import shutil
 import unittest
-from contextlib import contextmanager
-from cStringIO import StringIO
+from contextlib import contextmanager, redirect_stdout
+from io import BytesIO, StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from autobuild import common
+
+autobuild_dir = Path(__file__).resolve().parent.parent.parent
+
+# Small script used by tests such as test_source_environment's where 
+# autobuild needs to be called from an external script.
+AUTOBUILD_BIN_SCRIPT = """#!/usr/bin/env python
+from autobuild import autobuild_main
+
+if __name__ == "__main__":
+    autobuild_main.main()
+"""
+
+@contextmanager
+def tmp_autobuild_bin():
+    """
+    Create a temporary directory with an autobuild shim script pointing to the
+    autobuild_main in this package. Yields the path to the autobuild script.
+    """
+    with TemporaryDirectory() as tmp_dir:
+        autobuild_bin = str(Path(tmp_dir) / "autobuild")
+
+        # Write AUTOBUILD_BIN_SCRIPT contents into temporary directory
+        with open(autobuild_bin, "w") as f:
+            f.write(AUTOBUILD_BIN_SCRIPT)
+
+        # Make script executable
+        os.chmod(autobuild_bin, 0o775)
+
+        # Insert both the temporary bin directory containing autobuild and local autobuild
+        # python module location into the system path. 
+        sys.path.insert(0, autobuild_dir)
+        sys.path.insert(0, tmp_dir)
+        try:
+            yield autobuild_bin
+        finally:
+            # Cleanup path
+            sys.path.remove(tmp_dir)
+            sys.path.remove(autobuild_dir)
+
 
 class BaseTest(unittest.TestCase):
     def setUp(self):
         self.this_dir = os.path.abspath(os.path.dirname(__file__))
-        # Unfortunately, when we run tests, sys.argv[0] is (e.g.) "nosetests"!
-        # So we can't just call get_autobuild_executable_path(); in fact that
-        # function is untestable. Derive a suitable autobuild command relative
-        # to this module's location. Note that this is OUR bin directory and
-        # OUR autobuild.cmd script -- not anything created by pip.
-        self.autobuild_bin = os.path.abspath(os.path.join(self.this_dir, os.pardir, os.pardir,
-                                                          "bin", "autobuild"))
-        if sys.platform.startswith("win"):
-            self.autobuild_bin += ".cmd"
+    
+    def run(self, result=None):
+        with tmp_autobuild_bin() as autobuild_bin:
+            self.autobuild_bin = autobuild_bin
+            super(BaseTest, self).run(result)
 
     def autobuild(self, *args, **kwds):
         """
@@ -61,7 +98,7 @@ class BaseTest(unittest.TestCase):
         through.
         """
         command = (self.autobuild_bin,) + args
-        return subprocess.check_output(command, **kwds).rstrip()
+        return subprocess.check_output(command, universal_newlines=True, **kwds).rstrip()
 
     # On Windows, need some retry logic wrapped around removing files (SIGHH)
     if not sys.platform.startswith("win"):
@@ -74,16 +111,16 @@ class BaseTest(unittest.TestCase):
                 tries += 1
                 try:
                     os.remove(path)
-                except OSError, err:
+                except OSError as err:
                     if err.errno == errno.ENOENT:
                         return
                     if err.errno != errno.EACCES:
-                        print "*** Unknown %s (errno %s): %s: %s" % \
-                              (err.__class__.__name__, err.errno, err, path)
+                        print("*** Unknown %s (errno %s): %s: %s" % \
+                              (err.__class__.__name__, err.errno, err, path))
                         sys.stdout.flush()
                         raise
                     if (time.time() - start) > 10:
-                        print "*** remove(%r) timed out after %s retries" % (path, tries)
+                        print("*** remove(%r) timed out after %s retries" % (path, tries))
                         sys.stdout.flush()
                         raise
                     time.sleep(1)
@@ -94,18 +131,18 @@ class BaseTest(unittest.TestCase):
 def clean_file(pathname):
     try:
         os.remove(pathname)
-    except OSError, err:
+    except OSError as err:
         if err.errno != errno.ENOENT:
-            print >>sys.stderr, "*** Can't remove %s: %s" % (pathname, err)
+            print("*** Can't remove %s: %s" % (pathname, err), file=sys.stderr)
             # But no exception, we're still trying to clean up.
 
 def clean_dir(pathname):
     try:
         shutil.rmtree(pathname)
-    except OSError, err:
+    except OSError as err:
         # Nonexistence is fine.
         if err.errno != errno.ENOENT:
-            print >>sys.stderr, "*** Can't remove %s: %s" % (pathname, err)
+            print("*** Can't remove %s: %s" % (pathname, err), file=sys.stderr)
 
 def assert_in(item, container):
     assert item in container, "%r not in %r" % (item, container)
@@ -197,6 +234,19 @@ def ExpectError(errfrag, expectation, exception=common.AutobuildError):
         assert False, "Expected a bad thing to happen"
     """
     return exc(exception, pattern=errfrag, message=expectation)
+
+
+@contextmanager
+def capture_stdout_buffer():
+    """
+    Capture sys.stdout.buffer
+    """
+    _ = StringIO() # Not needed for any tests yet
+    buf = BytesIO()
+    with redirect_stdout(_):
+        sys.stdout.buffer = buf
+        yield buf
+
 
 class CaptureStd(object):
     """

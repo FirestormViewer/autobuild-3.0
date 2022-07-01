@@ -28,7 +28,7 @@ import tempfile
 import unittest
 from zipfile import ZipFile
 from autobuild import common
-from basetest import *
+from .basetest import *
 
 class TestCommon(BaseTest):
     def setUp(self):

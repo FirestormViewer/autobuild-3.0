@@ -26,6 +26,7 @@ from ast import literal_eval
 from collections import OrderedDict
 import errno
 import itertools
+import json
 import logging
 from pprint import pformat
 import re
@@ -35,8 +36,8 @@ import string
 import subprocess
 import tempfile
 
-import common
-import autobuild_base
+from . import common
+from . import autobuild_base
 
 logger = logging.getLogger('autobuild.source_environment')
 
@@ -91,7 +92,8 @@ def _available_vsvers():
             [_VSWHERE_PATH, '-all', # '-legacy',
              '-products', '*',
              '-requires', 'Microsoft.Component.MSBuild',
-             '-property', 'installationVersion'])
+             '-property', 'installationVersion'],
+            universal_newlines=True)
     except OSError as err:
         if err.errno != errno.ENOENT:
             raise
@@ -145,13 +147,22 @@ def load_vsvars(vsver):
         # We can't use the VSxxxCOMNTOOLS dodge as we always used to. Use
         # vswhere.exe instead.
         via = os.path.basename(_VSWHERE_PATH)
-        # Split (e.g.) '150' into '15' and '0', then insert '.'
-        version = '.'.join((vsver[:-1], vsver[-1:]))
+        # Split (e.g.) '155' into '15' and '5'
+        major, minor = vsver[:-1], vsver[-1:]
+        # If user specifies vsver='155', but VS 2017 isn't installed, but VS
+        # 2019 is, s/he isn't going to be satisfied with VS 2019. Limit the
+        # allowable range of responses only to the next version up, e.g.
+        # -version [15.5,16.0)
+        nextver = int(major) + 1
+        version = '[{}.{},{}.0)'.format(major, minor, nextver)
         try:
-            where = subprocess.check_output(
+            # don't pass text=True or universal_newlines=True: we want bytes
+            # to pass to json.loads()
+            raw = subprocess.check_output(
                 [_VSWHERE_PATH, '-version', version, '-products', '*',
-                 '-requires', 'Microsoft.Component.MSBuild',
-                 '-property', 'InstallationPath']).rstrip()
+                 '-requires', 'Microsoft.Component.MSBuild', '-utf8',
+                 '-format', 'json'], universal_newlines=True).rstrip()
+            installs = json.loads(raw)
         except OSError as err:
             if err.errno != errno.ENOENT:
                 raise
@@ -162,13 +173,33 @@ def load_vsvars(vsver):
             # Don't forget that vswhere reports error information on stdout.
             raise SourceEnvError('AUTOBUILD_VSVER={} unsupported: {}:\n{}'
                                  .format(vsver, err, err.output))
-        if not where:
+        except ValueError as err:
+            raise SourceEnvError("Can't parse vswhere output:\n" + raw)
+
+        if not installs:
             # vswhere terminated with 0, yet its output is empty.
             raise SourceEnvError('AUTOBUILD_VSVER={} unsupported, '
                                  'is Visual Studio {} installed? (vswhere couldn\'t find)'
                                  .format(vsver, vsver))
-        # If we get this far, 'where' is the output of the above
-        # vswhere command. Append the rest of the directory path.
+
+        # If we get this far, 'installs' is the output of the above vswhere
+        # command. BUT vswhere treats -version as a lower bound: it reports
+        # every installed VS version >= -version. That's the reason we request
+        # json output, so that for each listed VS install we get the specific
+        # version as well as its install directory. Sort on the version string
+        # and pick the lowest version >= AUTOBUILD_VSVER. This is necessary
+        # because for (e.g.) -version 15.0, the version reported for VS 2017
+        # might be '15.8.2'. But what if you have both 15.5 and 15.8?
+        # We want a numeric sort, not a string sort, so that "10" sorts
+        # later than "8". Since some version components can be reported as
+        # (e.g.) "2+28010", don't just pass to int() -- find every cluster of
+        # decimal digits and build a list of int()s of those. Thus,
+        # "15.8.2+28010.2016" becomes [15, 8, 2, 2810, 2016].
+        installs.sort(key=lambda inst:
+                      [int(found.group(0))
+                       for found in re.finditer('[0-9]+', inst['catalog']['productDisplayVersion'])])
+        where = installs[0]['installationPath']
+        # Append the rest of the directory path.
         VCINSTALLDIR = os.path.join(where, 'VC', 'Auxiliary', 'Build')
 
     else:
@@ -233,9 +264,9 @@ def load_vsvars(vsver):
 
     # Now weed out of vcvars anything identical to OUR environment. Retain
     # only environment variables actually modified by vcvarsall.bat.
-    # Use items() rather than iteritems(): capture the list of items up front
-    # instead of trying to traverse vcvars while modifying it.
-    for var, value in vcvars.items():
+    # Capture the list of items up front instead of trying to traverse vcvars
+    # while modifying it.
+    for var, value in list(vcvars.items()):
         # Bear in mind that some variables were introduced by vcvarsall.bat and
         # are therefore NOT in our os.environ.
         if os.environ.get(var) == value:
@@ -258,9 +289,11 @@ def get_vars_from_bat(batpath, *args):
         # First call batpath to update the cmd shell's environment. Then
         # use Python itself -- not just any Python interpreter, but THIS one
         # -- to format the ENTIRE environment into temp_output.name.
+        # In Python 3, os.environ is no longer a simple dict. Explicitly
+        # convert to dict so pprint() will emit a form literal_eval() can read.
         temp_script_content = """\
 call "%s"%s
-"%s" -c "import os, pprint; pprint.pprint(os.environ)" > "%s"
+"%s" -c "import os, pprint; pprint.pprint(dict(os.environ))" > "%s"
 """ % (batpath, ''.join(' '+arg for arg in args), sys.executable, temp_output.name)
         # Specify mode="w" for text mode ("\r\n" newlines); default is binary.
         with tempfile.NamedTemporaryFile(suffix=".cmd", delete=False, mode="w") as temp_script:
@@ -308,7 +341,7 @@ call "%s"%s
 def cygpath(*args):
     """run cygpath with specified command-line args, returning its output"""
     cmdline = ["cygpath"] + list(args)
-    stdout = subprocess.Popen(cmdline, stdout=subprocess.PIPE) \
+    stdout = subprocess.Popen(cmdline, stdout=subprocess.PIPE, universal_newlines=True) \
                        .communicate()[0].rstrip()
     logger.debug("%s => '%s'" % (cmdline, stdout))
     return stdout
@@ -436,14 +469,6 @@ similar.""")
     else:
         template = '\n'.join((environment_template, windows_template))
 
-        try:
-            # reset stdout in binary mode so sh doesn't get confused by '\r'
-            import msvcrt
-            msvcrt.setmode(sys.stdout.fileno(), os.O_BINARY)
-        except ImportError:
-            # cygwin gets a pass
-            pass
-
         # We don't know which environment variables might be modified by
         # vsvars32.bat, but one of them is likely to be PATH. Treat PATH
         # specially: when a bash script invokes our load_vsvars() shell
@@ -474,7 +499,7 @@ similar.""")
         # A pathname ending with a backslash (as many do on Windows), when
         # embedded in quotes in a bash script, might inadvertently escape the
         # close quote. Remove all trailing backslashes.
-        vsvarslist = [(k, v.rstrip('\\')) for (k, v) in vsvars.iteritems()]
+        vsvarslist = [(k, v.rstrip('\\')) for (k, v) in vsvars.items()]
 
         # may as well sort by keys
         vsvarslist.sort()
@@ -490,11 +515,12 @@ similar.""")
     # Before expanding template with var_mapping, finalize the 'exports' and
     # 'vars' dicts into var_mapping["vars"] as promised above.
     var_mapping["vars"] = '\n'.join(itertools.chain(
-        (("    export %s='%s'" % (k, v)) for k, v in exports.iteritems()),
-        (("    %s='%s'" % (k, v)) for k, v in vars.iteritems()),
+        (("    export %s='%s'" % (k, v)) for k, v in exports.items()),
+        (("    %s='%s'" % (k, v)) for k, v in vars.items()),
         ))
 
-    sys.stdout.write(template % var_mapping)
+    # Write to stdout buffer to avoid writing CRLF line endings
+    sys.stdout.buffer.write((template % var_mapping).encode("utf-8"))
 
     if get_params:
         # *TODO - run get_params.generate_bash_script()
@@ -630,6 +656,7 @@ def internal_source_environment(configurations, varsfile):
                 win32 ="WINDOWS",
                 cygwin="WINDOWS",
                 darwin="DARWIN",
+                linux="LINUX",
                 linux2="LINUX",
                 )[sys.platform]
         except KeyError:
@@ -638,7 +665,7 @@ def internal_source_environment(configurations, varsfile):
         else:
             platform_re = re.compile(r'(.*_BUILD)_%s(.*)$' % platform)
             # use items() rather than iteritems(): we're modifying as we iterate
-            for var, value in vfvars.items():
+            for var, value in list(vfvars.items()):
                 match = platform_re.match(var)
                 if match:
                     # add a shorthand variable that excludes _PLATFORM
@@ -654,7 +681,7 @@ def internal_source_environment(configurations, varsfile):
                                ", ".join(configurations[1:]))
             configuration_re = re.compile(r'(.*_BUILD)_%s(.*)$' % configuration)
             # use items() because we're modifying as we iterate
-            for var, value in vfvars.items():
+            for var, value in list(vfvars.items()):
                 match = configuration_re.match(var)
                 if match:
                     # add a shorthand variable that excludes _CONFIGURATION
@@ -716,6 +743,7 @@ def internal_source_environment(configurations, varsfile):
                     '120': "Visual Studio 12",
                     '140': "Visual Studio 14",
                     '150': "Visual Studio 15",
+                    '160': "Visual Studio 16",
                     }[vsver]
             except KeyError:
                 # We don't have a specific mapping for this value of vsver. Take
@@ -726,7 +754,8 @@ def internal_source_environment(configurations, varsfile):
                 # build that actually consumes AUTOBUILD_WIN_CMAKE_GEN.
                 AUTOBUILD_WIN_CMAKE_GEN = "Visual Studio %s" % (vsver[:-1])
             # Of course CMake also needs to know bit width :-P
-            if os.environ["AUTOBUILD_ADDRSIZE"] == "64":
+            # Or at least it used to, until VS 2019.
+            if os.environ["AUTOBUILD_ADDRSIZE"] == "64" and vsver < '160':
                 AUTOBUILD_WIN_CMAKE_GEN += " Win64"
             exports["AUTOBUILD_WIN_CMAKE_GEN"] = AUTOBUILD_WIN_CMAKE_GEN
 
